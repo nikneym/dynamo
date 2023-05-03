@@ -159,3 +159,28 @@ pub fn accept(
 
     self.read_q.push(c);
 }
+
+pub fn writev(
+    self: *Socket,
+    c: *Completion,
+    comptime T: type,
+    userdata: *T,
+    vectors: []const os.iovec_const,
+    comptime cb: callback.WritevFn(T),
+) !void {
+    c.* = .{
+        .userdata = userdata,
+        .operation = .{
+            .writev = .{
+                .vectors = vectors,
+                .callback = comptime struct {
+                    fn callback(ud: *anyopaque, socket: *Socket, vec: []const os.iovec_const) void {
+                        return cb(@ptrCast(*T, @alignCast(@alignOf(T), ud)), socket, vec);
+                    }
+                }.callback,
+            },
+        },
+    };
+
+    self.write_q.push(c);
+}

@@ -15,6 +15,12 @@ fn onWriteFn(loop: *dynamo.Loop, socket: *dynamo.Socket, bytes: []const u8) void
     _ = bytes;
 }
 
+fn onWritevFn(loop: *dynamo.Loop, socket: *dynamo.Socket, vectors: []const os.iovec_const) void {
+    _ = socket;
+    _ = loop;
+    std.debug.print("{any}\n", .{vectors});
+}
+
 fn onConnectFn(loop: *dynamo.Loop, socket: *dynamo.Socket) void {
     _ = socket;
     _ = loop;
@@ -43,21 +49,21 @@ pub fn main() !void {
         onConnectFn,
     );
 
-    socket.write(
-        loop.getCompletion() catch unreachable,
+    try socket.writev(
+        try loop.getCompletion(),
         dynamo.Loop,
         &loop,
-        "GET / HTTP/1.1\r\n\r\n",
-        onWriteFn,
-    ) catch unreachable;
+        &.{.{ .iov_base = "GET / HTTP/1.1\r\n\r\n", .iov_len = 18 }},
+        onWritevFn,
+    );
 
-    socket.read(
-        loop.getCompletion() catch unreachable,
+    try socket.read(
+        try loop.getCompletion(),
         dynamo.Loop,
         &loop,
-        loop.allocator.alloc(u8, 4096) catch unreachable,
+        try allocator.alloc(u8, 1024),
         onReadFn,
-    ) catch unreachable;
+    );
 
     //try socket.bind(try net.Address.parseIp("127.0.0.1", 8080));
     //try socket.listen(128);

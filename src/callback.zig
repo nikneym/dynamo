@@ -1,3 +1,5 @@
+const std = @import("std");
+const os = std.os;
 const Socket = @import("socket.zig");
 
 pub fn ReadFn(comptime T: type) type {
@@ -18,6 +20,14 @@ pub fn WriteFn(comptime T: type) type {
         userdata: *align(@alignOf(T)) T,
         socket: *Socket,
         bytes: []const u8,
+    ) void;
+}
+
+pub fn WritevFn(comptime T: type) type {
+    return *const fn (
+        userdata: *align(@alignOf(T)) T,
+        socket: *Socket,
+        vectors: []const os.iovec_const,
     ) void;
 }
 

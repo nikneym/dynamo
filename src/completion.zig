@@ -1,6 +1,7 @@
 const std = @import("std");
 const os = std.os;
 const net = std.net;
+const mem = std.mem;
 const callback = @import("callback.zig");
 const Socket = @import("socket.zig");
 const Loop = @import("backends/epoll.zig");
@@ -38,17 +39,17 @@ pub const Operation = union(enum) {
     // TODO: implement corresponding perform functions
     // scatter/gather (vectored) I/O
     writev: struct {
-        vector: []const os.iovec_const,
-        //callback: WriteFn(anyopaque),
+        vectors: []const os.iovec_const,
+        callback: callback.WritevFn(anyopaque),
     },
 
     readv: struct {
-        vector: []os.iovec,
-        //callback: ReadFn(anyopaque),
+        vectors: []os.iovec,
+        //callback: callback.ReadFn(anyopaque),
     },
 };
 
-pub fn perform(self: *Completion, socket: *Socket, loop: *Loop) !void {
+pub fn perform(self: *Completion, allocator: mem.Allocator, socket: *Socket, loop: *Loop) !void {
     switch (self.operation) {
         .connect => |op| {
             // TODO: report errors to the completion callback
@@ -65,7 +66,7 @@ pub fn perform(self: *Completion, socket: *Socket, loop: *Loop) !void {
             socket.write_q = .{};
 
             while (queue.pop()) |c| {
-                try c.perform(socket, loop);
+                try c.perform(allocator, socket, loop);
             }
         },
         .write => |op| {
@@ -132,6 +133,12 @@ pub fn perform(self: *Completion, socket: *Socket, loop: *Loop) !void {
             try loop.register(incoming);
 
             op.callback(self.userdata, socket, incoming);
+        },
+        // FIXME: partial writes might be needed
+        .writev => |op| {
+            _ = try os.writev(socket.fd, op.vectors);
+
+            op.callback(self.userdata, socket, op.vectors);
         },
 
         else => @panic("not implemented yet"),

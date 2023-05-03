@@ -95,7 +95,7 @@ pub fn run(self: *Loop) !void {
                 socket.read_q = .{};
 
                 while (queue.pop()) |c| {
-                    try c.perform(socket, self);
+                    try c.perform(self.allocator, socket, self);
                 }
             }
 
@@ -104,7 +104,7 @@ pub fn run(self: *Loop) !void {
                 socket.write_q = .{};
 
                 while (queue.pop()) |c| {
-                    try c.perform(socket, self);
+                    try c.perform(self.allocator, socket, self);
                 }
             }
         }
