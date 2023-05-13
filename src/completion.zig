@@ -8,7 +8,6 @@ const Loop = @import("backends/epoll.zig");
 const Queue = @import("queue.zig").Queue;
 
 const Completion = @This();
-//fd: os.socket_t,
 userdata: *anyopaque,
 operation: Operation,
 next: ?*Completion = null,
@@ -39,7 +38,7 @@ pub const Operation = union(enum) {
     // TODO: implement corresponding perform functions
     // scatter/gather (vectored) I/O
     writev: struct {
-        vectors: []const os.iovec_const,
+        vectors: [*]os.iovec_const,
         callback: callback.WritevFn(anyopaque),
     },
 
@@ -52,11 +51,14 @@ pub const Operation = union(enum) {
 pub fn perform(self: *Completion, allocator: mem.Allocator, socket: *Socket, loop: *Loop) !void {
     switch (self.operation) {
         .connect => |op| {
-            // TODO: report errors to the completion callback
-            try os.getsockoptError(socket.fd);
-
             // run the completion callback
-            op.callback(self.userdata, socket);
+            op.callback(
+                self.userdata,
+                loop,
+                self,
+                socket,
+                os.getsockoptError(socket.fd) catch |e| e,
+            );
 
             // FIXME: epoll notifies us that it's still writable here
             // so, it should be okay to continue doing write operations.
@@ -79,13 +81,17 @@ pub fn perform(self: *Completion, allocator: mem.Allocator, socket: *Socket, loo
                         if (self.next) |next| socket.write_q.push(next);
                         break;
                     },
-                    else => return e,
+                    else => {
+                        op.callback(self.userdata, loop, self, socket, op.bytes, e);
+                        return;
+                    },
                 };
+
                 pos += len;
             }
 
             // run the completion callback
-            op.callback(self.userdata, socket, op.bytes);
+            op.callback(self.userdata, loop, self, socket, op.bytes, pos);
         },
         .read => |op| {
             // read 'till we got blocked
@@ -97,13 +103,18 @@ pub fn perform(self: *Completion, allocator: mem.Allocator, socket: *Socket, loo
                         if (self.next) |next| socket.read_q.push(next);
                         break;
                     },
-                    else => return e,
+                    // notify the caller with the error
+                    else => {
+                        op.callback(self.userdata, loop, self, socket, op.slice, e);
+                        return;
+                    },
                 };
 
                 pos += len;
             }
 
-            op.callback(self.userdata, socket, op.slice, pos);
+            // call without errors
+            op.callback(self.userdata, loop, self, socket, op.slice, pos);
         },
         .accept => |op| {
             // see if we can accept the incoming connection
@@ -117,28 +128,31 @@ pub fn perform(self: *Completion, allocator: mem.Allocator, socket: *Socket, loo
                 os.SOCK.CLOEXEC | os.SOCK.NONBLOCK,
             ) catch |e| switch (e) {
                 // FIXME: I'm not sure if this is necessary
-                error.WouldBlock => {
-                    socket.read_q.push(self);
+                //error.WouldBlock => {
+                //    socket.read_q.push(self);
+                //    return;
+                //},
+                else => {
+                    op.callback(self.userdata, loop, self, socket, e);
                     return;
                 },
-                else => return e,
             };
 
             // FIXME: use a pool for these sockets?
             // allocate a new Socket for incoming connection
-            const incoming = try loop.allocator.create(Socket);
+            const incoming = loop.allocator.create(Socket) catch |e| {
+                op.callback(self.userdata, loop, self, socket, e);
+                return;
+            };
             errdefer loop.allocator.destroy(incoming);
             incoming.* = .{ .fd = fd };
             // register the new socket to our loop
-            try loop.register(incoming);
+            loop.register(incoming) catch |e| {
+                op.callback(self.userdata, loop, self, socket, e);
+                return;
+            };
 
-            op.callback(self.userdata, socket, incoming);
-        },
-        // FIXME: partial writes might be needed
-        .writev => |op| {
-            _ = try os.writev(socket.fd, op.vectors);
-
-            op.callback(self.userdata, socket, op.vectors);
+            op.callback(self.userdata, loop, self, socket, incoming);
         },
 
         else => @panic("not implemented yet"),

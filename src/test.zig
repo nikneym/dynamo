@@ -3,27 +3,63 @@ const net = std.net;
 const os = std.os;
 const dynamo = @import("main.zig");
 
-fn onReadFn(loop: *dynamo.Loop, socket: *dynamo.Socket, buffer: []u8, length: usize) void {
+fn onReadFn(
+    userdata: *i32,
+    loop: *dynamo.Loop,
+    completion: *dynamo.Completion,
+    socket: *dynamo.Socket,
+    buffer: []u8,
+    result: anyerror!usize,
+) void {
+    _ = userdata;
+    _ = completion;
     _ = socket;
     _ = loop;
+    const length = result catch |e| {
+        std.debug.print("{}\n", .{e});
+        return;
+    };
+
     std.debug.print("{s}", .{buffer[0..length]});
 }
 
-fn onWriteFn(loop: *dynamo.Loop, socket: *dynamo.Socket, bytes: []const u8) void {
+fn onWriteFn(
+    userdata: *i32,
+    loop: *dynamo.Loop,
+    completion: *dynamo.Completion,
+    socket: *dynamo.Socket,
+    bytes: []const u8,
+    result: anyerror!usize,
+) void {
+    std.debug.print("write complete!\n", .{});
+    _ = completion;
+    _ = userdata;
     _ = socket;
     _ = loop;
     _ = bytes;
+    const len = result catch |e| {
+        std.debug.print("{}\n", .{e});
+        return;
+    };
+    _ = len;
 }
 
-fn onWritevFn(loop: *dynamo.Loop, socket: *dynamo.Socket, vectors: []const os.iovec_const) void {
+fn onConnectFn(
+    userdata: *dynamo.Loop,
+    loop: *dynamo.Loop,
+    completion: *dynamo.Completion,
+    socket: *dynamo.Socket,
+    result: anyerror!void,
+) void {
     _ = socket;
-    _ = loop;
-    std.debug.print("{any}\n", .{vectors});
-}
+    _ = userdata;
 
-fn onConnectFn(loop: *dynamo.Loop, socket: *dynamo.Socket) void {
-    _ = socket;
-    _ = loop;
+    result catch |e| {
+        std.debug.print("{}\n", .{e});
+        loop.freeCompletion(completion);
+        return;
+    };
+
     std.debug.print("connected\n", .{});
 }
 
@@ -49,18 +85,20 @@ pub fn main() !void {
         onConnectFn,
     );
 
-    try socket.writev(
+    var num: i32 = 7;
+
+    try socket.write(
         try loop.getCompletion(),
-        dynamo.Loop,
-        &loop,
-        &.{.{ .iov_base = "GET / HTTP/1.1\r\n\r\n", .iov_len = 18 }},
-        onWritevFn,
+        i32,
+        &num,
+        "GET / HTTP/1.1\r\n\r\n",
+        onWriteFn,
     );
 
     try socket.read(
         try loop.getCompletion(),
-        dynamo.Loop,
-        &loop,
+        i32,
+        &num,
         try allocator.alloc(u8, 1024),
         onReadFn,
     );

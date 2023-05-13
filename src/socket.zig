@@ -7,6 +7,7 @@ const EPOLL = linux.EPOLL;
 const Queue = @import("queue.zig").Queue;
 const Completion = @import("completion.zig");
 const callback = @import("callback.zig");
+const Loop = @import("backends/epoll.zig");
 
 const Socket = @This();
 fd: os.socket_t,
@@ -73,8 +74,20 @@ pub fn connect(
         .operation = .{
             .connect = .{
                 .callback = comptime struct {
-                    fn callback(ud: *anyopaque, socket: *Socket) void {
-                        return cb(@ptrCast(*T, @alignCast(@alignOf(T), ud)), socket);
+                    fn callback(
+                        ud: *anyopaque,
+                        loop: *Loop,
+                        completion: *Completion,
+                        socket: *Socket,
+                        result: anyerror!void,
+                    ) void {
+                        return cb(
+                            @ptrCast(*T, @alignCast(@alignOf(T), ud)),
+                            loop,
+                            completion,
+                            socket,
+                            result,
+                        );
                     }
                 }.callback,
             },
@@ -94,14 +107,27 @@ pub fn write(
     comptime cb: callback.WriteFn(T),
 ) !void {
     c.* = .{
-        //.fd = self.fd,
         .userdata = userdata,
         .operation = .{
             .write = .{
                 .bytes = bytes,
                 .callback = comptime struct {
-                    fn callback(ud: *anyopaque, socket: *Socket, bytes1: []const u8) void {
-                        return cb(@ptrCast(*T, @alignCast(@alignOf(T), ud)), socket, bytes1);
+                    fn callback(
+                        ud: *anyopaque,
+                        loop: *Loop,
+                        completion: *Completion,
+                        socket: *Socket,
+                        bytes1: []const u8,
+                        result: anyerror!usize,
+                    ) void {
+                        return cb(
+                            @ptrCast(*T, @alignCast(@alignOf(T), ud)),
+                            loop,
+                            completion,
+                            socket,
+                            bytes1,
+                            result,
+                        );
                     }
                 }.callback,
             },
@@ -120,14 +146,27 @@ pub fn read(
     comptime cb: callback.ReadFn(T),
 ) !void {
     c.* = .{
-        //.fd = self.fd,
         .userdata = userdata,
         .operation = .{
             .read = .{
                 .slice = slice,
                 .callback = comptime struct {
-                    fn callback(ud: *anyopaque, socket: *Socket, slice1: []u8, length: usize) void {
-                        return cb(@ptrCast(*T, @alignCast(@alignOf(T), ud)), socket, slice1, length);
+                    fn callback(
+                        ud: *anyopaque,
+                        loop: *Loop,
+                        completion: *Completion,
+                        socket: *Socket,
+                        slice1: []u8,
+                        result: anyerror!usize,
+                    ) void {
+                        return cb(
+                            @ptrCast(*T, @alignCast(@alignOf(T), ud)),
+                            loop,
+                            completion,
+                            socket,
+                            slice1,
+                            result,
+                        );
                     }
                 }.callback,
             },
@@ -149,8 +188,20 @@ pub fn accept(
         .operation = .{
             .accept = .{
                 .callback = comptime struct {
-                    fn callback(ud: *anyopaque, socket: *Socket, incoming: *Socket) void {
-                        return cb(@ptrCast(*T, @alignCast(@alignOf(T), ud)), socket, incoming);
+                    fn callback(
+                        ud: *anyopaque,
+                        loop: *Loop,
+                        completion: *Completion,
+                        socket: *Socket,
+                        result: anyerror!*Socket,
+                    ) void {
+                        return cb(
+                            @ptrCast(*T, @alignCast(@alignOf(T), ud)),
+                            loop,
+                            completion,
+                            socket,
+                            result,
+                        );
                     }
                 }.callback,
             },
