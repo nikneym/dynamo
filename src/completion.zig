@@ -140,11 +140,11 @@ pub fn perform(self: *Completion, allocator: mem.Allocator, socket: *Socket, loo
 
             // FIXME: use a pool for these sockets?
             // allocate a new Socket for incoming connection
-            const incoming = loop.allocator.create(Socket) catch |e| {
+            const incoming = allocator.create(Socket) catch |e| {
                 op.callback(self.userdata, loop, self, socket, e);
                 return;
             };
-            errdefer loop.allocator.destroy(incoming);
+            errdefer allocator.destroy(incoming);
             incoming.* = .{ .fd = fd };
             // register the new socket to our loop
             loop.register(incoming) catch |e| {

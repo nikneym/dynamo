@@ -11,16 +11,14 @@ fn onReadFn(
     buffer: []u8,
     result: anyerror!usize,
 ) void {
-    _ = userdata;
-    _ = completion;
-    _ = socket;
     _ = loop;
     const length = result catch |e| {
         std.debug.print("{}\n", .{e});
         return;
     };
 
-    std.debug.print("{s}", .{buffer[0..length]});
+    std.debug.print("read length: {}\n", .{length});
+    socket.read(completion, i32, userdata, buffer, onReadFn) catch unreachable;
 }
 
 fn onWriteFn(
@@ -99,7 +97,7 @@ pub fn main() !void {
         try loop.getCompletion(),
         i32,
         &num,
-        try allocator.alloc(u8, 1024),
+        try allocator.alloc(u8, 2048),
         onReadFn,
     );
 
